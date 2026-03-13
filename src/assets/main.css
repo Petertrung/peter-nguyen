@@ -1,10 +1,15 @@
 @import "./base.css";
+html, body { overflow-x: hidden; max-width: 100vw; }
 
 #app {
-  max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
   font-weight: normal;
+  display: flex;
+  justify-content: center;
+  align-items: center; 
+  min-width: 100vw;
+  min-height: 100vh;
 }
 
 a,
@@ -19,6 +24,32 @@ a,
   cursor: pointer;
 }
 
+ .v-enter-active {
+    transition: opacity 0.5s ease;
+  }
+
+  .v-enter-from,
+  .v-leave-to {
+    opacity: 0;
+  }
+
+  .slide-enter-active,
+  .slide-leave-active {
+    transition:
+      transform 0.3s ease,
+      opacity 0.3s ease;
+  }
+
+  .slide-enter-from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  .slide-leave-to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+
 @media (hover: hover) {
   a:hover {
     background-color: hsla(160, 100%, 37%, 0.2);
@@ -32,31 +63,11 @@ a,
   }
 
   #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
     padding: 0 2rem;
   }
-  .v-enter-active {
-    transition: opacity 0.5s ease;
+
+  .center_content {
+    width: 80vw;
+    max-width: 1500px
   }
-
-  .v-enter-from,
-  .v-leave-to {
-    opacity: 0;
-  }
-
-  .slide-enter-active,
-.slide-leave-active {
-  transition: transform 0.3s ease, opacity 0.3s ease;
-}
-
-.slide-enter-from {
-  transform: translateX(100%);
-  opacity: 0;
-}
-
-.slide-leave-to {
-  transform: translateX(-100%);
-  opacity: 0;
-}
 }

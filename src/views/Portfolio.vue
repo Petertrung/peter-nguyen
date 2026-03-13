@@ -37,7 +37,7 @@ const filters: (VideoType | 'all')[] = ['all', 'short film', 'event', 'vlog', 'p
 </script>
 
 <template>
-    <div class="portfolio">
+    <div class="portfolio center_content">
         <header class="portfolio-header">
             <h1>Portfolio</h1>
             <div class="filters">
@@ -74,6 +74,7 @@ const filters: (VideoType | 'all')[] = ['all', 'short film', 'event', 'vlog', 'p
 .portfolio-header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
     margin-bottom: 2rem;
 }
@@ -85,7 +86,9 @@ h1 {
 
 .filters {
     display: flex;
+    flex: 1.1;
     gap: 0.5rem;
+    padding: 12px;
 }
 
 .filter-btn {
@@ -151,5 +154,11 @@ h1 {
     margin-top: 0.5rem;
     font-size: 0.95rem;
     color: var(--color-text);
+}
+
+@media (min-width: 1024px) {
+    .filters{
+        flex: .3;
+    }
 }
 </style>

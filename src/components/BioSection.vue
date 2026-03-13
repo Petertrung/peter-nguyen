@@ -1,26 +1,19 @@
 <script setup lang="ts">
 import WelcomeItem from './WelcomeItem.vue'
-import IconBusiness from './icons/IconBusiness.vue';
-import ComputerIcon from './icons/IconComputer.vue'
-import IconCreative from './icons/IconCreative.vue';
 
-import { ref } from 'vue'
+import { store } from '@/store/store';
 
-const tabIndex = ref(0);
-
-const handleChange = () => {
-  if (tabIndex.value >= 2) {
-    tabIndex.value = 0
-  } else {
-    tabIndex.value++
+const props = defineProps({
+  handleChange: {
+    type: Function,
+    required: true,
   }
-}
-
+});
 </script>
 
 <template>
   <Transition>
-    <WelcomeItem v-if="tabIndex === 0" :handleChange="handleChange" to="/resume">
+    <WelcomeItem v-if="store.tabIndex === 0" :handleChange="handleChange" to="/resume">
       <template #icon>
         <ComputerIcon />
       </template>
@@ -37,7 +30,7 @@ const handleChange = () => {
     </WelcomeItem>
   </Transition>
   <Transition>
-    <WelcomeItem v-if="tabIndex === 1" :handleChange="handleChange" to="/portfolio">
+    <WelcomeItem v-if="store.tabIndex === 1" :handleChange="handleChange" to="/portfolio">
       <template #icon>
         <IconCreative />
       </template>
@@ -52,7 +45,7 @@ const handleChange = () => {
     </WelcomeItem>
   </Transition>
   <Transition>
-    <WelcomeItem v-if="tabIndex === 2" :handleChange="handleChange" to="/business">
+    <WelcomeItem v-if="store.tabIndex === 2" :handleChange="handleChange" to="/business">
       <template #icon>
         <IconBusiness />
       </template>

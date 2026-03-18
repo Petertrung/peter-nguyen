@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import AttventureIcon from '@/components/attventureIcon.vue'
-import MovieList from '@/components/movieList.vue'
+import AttventureIcon from '@/components/AttventureIcon.vue'
+import MovieList from '@/components/MovieList.vue'
+
 
 const loading = ref(true)
 

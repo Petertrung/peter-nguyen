@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router'
+const router = useRouter();
 
 // ── TYPES ──────────────────────────────────────────────
 interface ShowMeta {
@@ -10,7 +12,6 @@ interface ShowMeta {
 }
 interface Show {
   id: string;
-  rowIndex: number;
   status: 'ip' | 'o' | 'x';
   title: string; keyword: string; medium: string;
   meta: ShowMeta | null;
@@ -24,11 +25,12 @@ const GS_KEY      = (import.meta.env.VITE_GS_PRIVATE_KEY as string ?? '').replac
 const GS_SHEET_ID = import.meta.env.VITE_GS_SHEET_ID     as string ?? '';
 const GS_TAB      = 'Watching';
 const GS_RANGE    = 'Watching!A:F';
-const LS_SHOWS     = 'wl_shows_v4';
-const LS_API_COUNT = 'wl_api_day_v4';
-const CACHE_TTL    = 1000 * 60 * 30;
-const OMDB_LIMIT   = 950;
+// Column indices (0-based in array, A=0)
 const COL = { STATUS: 0, TITLE: 1, KEYWORD: 2, MEDIUM: 3, META: 4 };
+
+const LS_OMDB_COUNT = 'wl_omdb_day_v4';
+const LS_OMDB_META  = 'wl_omdb_meta_v4'; // local OMDB cache only — no show list cache
+const OMDB_LIMIT    = 950;
 
 // ── STATE ──────────────────────────────────────────────
 const shows        = ref<Show[]>([]);
@@ -47,33 +49,31 @@ const newShow      = ref({ status: 'o' as StatusKey, title: '', keyword: '', med
 const saving       = ref(false);
 const saveMsg      = ref('');
 
-// ── CACHE ─────────────────────────────────────────────
-function cacheGet<T>(key: string, ttl?: number): T | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const e: { data: T; ts: number } = JSON.parse(raw);
-    if (ttl && Date.now() - e.ts > ttl) { localStorage.removeItem(key); return null; }
-    return e.data;
-  } catch { return null; }
+// ── OMDB LOCAL CACHE (posters only, no show list) ─────
+function omdbMetaGet(title: string): ShowMeta | null {
+  try { return (JSON.parse(localStorage.getItem(LS_OMDB_META) ?? '{}') as Record<string, ShowMeta>)[title] ?? null; } catch { return null; }
 }
-function cacheSet<T>(key: string, data: T) {
-  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch { /**/ }
+function omdbMetaSet(title: string, meta: ShowMeta) {
+  try {
+    const m = JSON.parse(localStorage.getItem(LS_OMDB_META) ?? '{}') as Record<string, ShowMeta>;
+    m[title] = meta;
+    localStorage.setItem(LS_OMDB_META, JSON.stringify(m));
+  } catch { /**/ }
 }
 
 // ── OMDB DAILY COUNTER ────────────────────────────────
 function getCount(): number {
   try {
-    const r = localStorage.getItem(LS_API_COUNT);
+    const r = localStorage.getItem(LS_OMDB_COUNT);
     if (!r) return 0;
     const { count, date }: { count: number; date: string } = JSON.parse(r);
-    if (date !== new Date().toISOString().slice(0, 10)) { localStorage.removeItem(LS_API_COUNT); return 0; }
+    if (date !== new Date().toISOString().slice(0, 10)) { localStorage.removeItem(LS_OMDB_COUNT); return 0; }
     return count;
   } catch { return 0; }
 }
 function bumpCount() {
   const n = getCount() + 1;
-  localStorage.setItem(LS_API_COUNT, JSON.stringify({ count: n, date: new Date().toISOString().slice(0, 10) }));
+  localStorage.setItem(LS_OMDB_COUNT, JSON.stringify({ count: n, date: new Date().toISOString().slice(0, 10) }));
   omdbToday.value = n;
 }
 const atLimit = () => getCount() >= OMDB_LIMIT;
@@ -84,60 +84,82 @@ let _gsTokenExp = 0;
 
 async function getGsToken(): Promise<string> {
   if (_gsToken && Date.now() < _gsTokenExp - 60_000) return _gsToken;
-  const now   = Math.floor(Date.now() / 1000);
-  const claim = { iss: GS_EMAIL, scope: 'https://www.googleapis.com/auth/spreadsheets', aud: 'https://oauth2.googleapis.com/token', exp: now + 3600, iat: now };
-  const enc   = (obj: object) => btoa(JSON.stringify(obj)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const unsigned = `${enc({ alg: 'RS256', typ: 'JWT' })}.${enc(claim)}`;
+  const now    = Math.floor(Date.now() / 1000);
+  const claim  = { iss: GS_EMAIL, scope: 'https://www.googleapis.com/auth/spreadsheets', aud: 'https://oauth2.googleapis.com/token', exp: now + 3600, iat: now };
+  const enc    = (o: object) => btoa(JSON.stringify(o)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const header = enc({ alg: 'RS256', typ: 'JWT' });
+  const payload = enc(claim);
+  const unsigned = `${header}.${payload}`;
   const pemBody  = GS_KEY.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\n/g, '');
   const derBuf   = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
   const cryptoKey = await crypto.subtle.importKey('pkcs8', derBuf.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
   const sigBuf   = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(unsigned));
-  const sig      = btoa(String.fromCharCode(...new Uint8Array(sigBuf))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const jwt      = `${unsigned}.${sig}`;
+  const sig      = btoa(String.fromCharCode(...new Uint8Array(sigBuf))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
   const res      = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${unsigned}.${sig}`,
   });
   const data = await res.json() as { access_token: string; expires_in: number };
-  if (!data.access_token) throw new Error('GS token failed: ' + JSON.stringify(data));
+  if (!data.access_token) throw new Error('GS auth failed: ' + JSON.stringify(data));
   _gsToken    = data.access_token;
   _gsTokenExp = Date.now() + data.expires_in * 1000;
   return _gsToken;
 }
 
-// ── GOOGLE SHEETS API ─────────────────────────────────
+// ── GOOGLE SHEETS: READ ALL ROWS ──────────────────────
 async function gsRead(): Promise<string[][]> {
   const token = await getGsToken();
-  const res   = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GS_SHEET_ID}/values/${encodeURIComponent(GS_RANGE)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res   = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${GS_SHEET_ID}/values/${encodeURIComponent(GS_RANGE)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
   if (!res.ok) throw new Error(`GS read: ${res.status} ${await res.text()}`);
-  const data  = await res.json() as { values?: string[][] };
+  const data = await res.json() as { values?: string[][] };
   return data.values ?? [];
 }
 
-async function gsUpdateCell(rowIndex: number, colIndex: number, value: string): Promise<void> {
-  const token = await getGsToken();
-  const col   = String.fromCharCode(65 + colIndex);
-  const range = `${GS_TAB}!${col}${rowIndex}`;
-  const res   = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GS_SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ values: [[value]] }),
-  });
-  if (!res.ok) throw new Error(`GS update: ${res.status} ${await res.text()}`);
+// ── GOOGLE SHEETS: FIND ROW BY TITLE (live lookup) ───
+// Returns the 1-based sheet row number, or null if not found
+async function gsFindRowByTitle(title: string): Promise<number | null> {
+  const rows = await gsRead();
+  // Skip header row (index 0), data starts at index 1 = sheet row 2
+  const idx = rows.slice(1).findIndex(row => (row[COL.TITLE] ?? '').trim().toLowerCase() === title.trim().toLowerCase());
+  if (idx === -1) return null;
+  return idx + 2; // +1 for 0-based→1-based, +1 for skipped header
 }
 
+// ── GOOGLE SHEETS: UPDATE A CELL ─────────────────────
+async function gsUpdateCell(sheetRow: number, colIndex: number, value: string): Promise<void> {
+  const token = await getGsToken();
+  const col   = String.fromCharCode(65 + colIndex); // 0→A, 1→B …
+  const range = `${GS_TAB}!${col}${sheetRow}`;
+  const res   = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${GS_SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[value]] }),
+    }
+  );
+  if (!res.ok) throw new Error(`GS update [${range}]: ${res.status} ${await res.text()}`);
+}
+
+// ── GOOGLE SHEETS: APPEND ROW ─────────────────────────
 async function gsAppendRow(values: string[]): Promise<void> {
   const token = await getGsToken();
-  const res   = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${GS_SHEET_ID}/values/${encodeURIComponent(GS_TAB)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ values: [values] }),
-  });
+  const res   = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${GS_SHEET_ID}/values/${encodeURIComponent(GS_TAB)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [values] }),
+    }
+  );
   if (!res.ok) throw new Error(`GS append: ${res.status} ${await res.text()}`);
 }
 
-// ── OMDB + META ───────────────────────────────────────
+// ── META HELPERS ──────────────────────────────────────
 function parseMeta(d: Record<string, string>): ShowMeta {
   const v = (k: string) => (d[k] && d[k] !== 'N/A') ? d[k]! : '';
   return { poster: v('Poster'), year: v('Year'), rated: v('Rated'), runtime: v('Runtime'), genre: v('Genre'), director: v('Director'), actors: v('Actors'), plot: v('Plot'), imdbRating: v('imdbRating'), imdbVotes: v('imdbVotes'), seasons: v('totalSeasons'), country: v('Country'), awards: v('Awards') };
@@ -146,11 +168,13 @@ function parseMetaField(raw: string): ShowMeta | null {
   if (!raw) return null;
   try {
     const p = JSON.parse(raw) as Record<string, string>;
-    if (p.poster !== undefined) return p as unknown as ShowMeta;
-    if (p.Poster !== undefined) return parseMeta(p);
+    if (p.poster  !== undefined) return p as unknown as ShowMeta;
+    if (p.Poster  !== undefined) return parseMeta(p);
   } catch { /**/ }
   return null;
 }
+
+// ── OMDB ─────────────────────────────────────────────
 async function callOmdb(title: string, medium: string): Promise<Record<string, string> | null> {
   if (!OMDB_KEY || atLimit()) return null;
   const type = medium.toLowerCase() === 'movie' ? 'movie' : 'series';
@@ -160,25 +184,28 @@ async function callOmdb(title: string, medium: string): Promise<Record<string, s
   return data.Response === 'False' ? null : data;
 }
 
-// ── FETCH ─────────────────────────────────────────────
+// ── FETCH SHOWS (always live from sheet) ──────────────
 async function fetchShows(force = false) {
   loading.value = true; error.value = ''; omdbToday.value = getCount();
-  if (!force) {
-    const cached = cacheGet<Show[]>(LS_SHOWS, CACHE_TTL);
-    if (cached?.length) { shows.value = cached; loading.value = false; if (OMDB_KEY) enrichMissing(); return; }
-  }
   try {
-    const rows   = await gsRead();
-    console.log('[WL] headers:', rows[0]);
-    shows.value  = rows.slice(1).map((row, i) => ({
-      id: String(i), rowIndex: i + 2,
-      status:  normalizeStatus(row[COL.STATUS] ?? ''),
-      title:   row[COL.TITLE]   ?? '',
-      keyword: row[COL.KEYWORD] ?? '',
-      medium:  row[COL.MEDIUM]  ?? '',
-      meta:    parseMetaField(row[COL.META] ?? ''),
-    })).filter(s => s.title);
-    cacheSet(LS_SHOWS, shows.value);
+    const rows  = await gsRead();
+    console.log('[WL] headers:', rows[0], '| rows:', rows.length - 1);
+    shows.value = rows.slice(1).map((row, i) => {
+      const title   = (row[COL.TITLE]   ?? '').trim();
+      const keyword = (row[COL.KEYWORD] ?? '').trim();
+      const medium  = (row[COL.MEDIUM]  ?? '').trim();
+      const sheetMeta = parseMetaField(row[COL.META] ?? '');
+      const meta      = sheetMeta ?? omdbMetaGet(title);
+      return {
+        id:     String(i),
+        status: normalizeStatus(row[COL.STATUS] ?? ''),
+        title,
+        keyword,
+        medium,
+        meta,
+      };
+    }).filter(s => s.title);
+
     if (OMDB_KEY) enrichMissing();
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load';
@@ -193,44 +220,53 @@ function normalizeStatus(raw: string): StatusKey {
   return 'o';
 }
 
-// ── UPDATE STATUS ─────────────────────────────────────
+// ── UPDATE STATUS (live row lookup, no cached index) ──
 async function updateStatus(show: Show, newStatus: StatusKey) {
   const prev = show.status;
+  // Optimistic update in UI
   show.status = newStatus;
   if (modalShow.value?.id === show.id) modalShow.value.status = newStatus;
-  cacheSet(LS_SHOWS, shows.value);
   try {
-    await gsUpdateCell(show.rowIndex, COL.STATUS, newStatus);
-    console.log('[WL] status:', show.title, '→', newStatus);
+    // Always look up the current row by title — never trust a cached index
+    const sheetRow = await gsFindRowByTitle(show.title);
+    if (!sheetRow) throw new Error(`"${show.title}" not found in sheet`);
+    await gsUpdateCell(sheetRow, COL.STATUS, newStatus);
+    console.log('[WL] ✓ status saved:', show.title, '→', newStatus, `(row ${sheetRow})`);
   } catch (e) {
     console.error('[WL] updateStatus failed:', e);
+    // Revert on failure
     show.status = prev;
     if (modalShow.value?.id === show.id) modalShow.value.status = prev;
-    cacheSet(LS_SHOWS, shows.value);
   }
 }
 
-// ── ENRICH ────────────────────────────────────────────
+// ── ENRICH META ───────────────────────────────────────
 async function enrichMissing() {
   if (!OMDB_KEY) return;
   const missing = shows.value.filter(s => !s.meta || !s.meta.poster);
   console.log('[WL] enrichMissing:', missing.length, 'shows');
   if (!missing.length) return;
-  if (atLimit()) { enrichMsg.value = `Daily limit reached (${omdbToday.value}/${OMDB_LIMIT}).`; return; }
+  if (atLimit()) { enrichMsg.value = `Daily OMDB limit reached (${omdbToday.value}/${OMDB_LIMIT}).`; return; }
+
   enriching.value = true;
   for (let i = 0; i < missing.length; i++) {
-    if (atLimit()) { enrichMsg.value = `Limit reached (${omdbToday.value}/${OMDB_LIMIT}). Continues tomorrow.`; break; }
+    if (atLimit()) { enrichMsg.value = `OMDB limit reached (${omdbToday.value}/${OMDB_LIMIT}). Continues tomorrow.`; break; }
     const show = missing[i]!;
     enrichMsg.value = `Fetching ${i + 1}/${missing.length}: "${show.title}"`;
     try {
       const data = await callOmdb(show.title, show.medium);
-      show.meta = data ? parseMeta(data) : { poster: '', year: '', rated: '', runtime: '', genre: '', director: '', actors: '', plot: '', imdbRating: '', imdbVotes: '', seasons: '', country: '', awards: '' };
-      console.log('[WL] enriched:', show.title, '| poster:', !!show.meta?.poster, `(${omdbToday.value}/${OMDB_LIMIT})`);
-      cacheSet(LS_SHOWS, shows.value);
-      if (show.meta) await gsUpdateCell(show.rowIndex, COL.META, JSON.stringify(show.meta));
+      const meta = data
+        ? parseMeta(data)
+        : { poster: '', year: '', rated: '', runtime: '', genre: '', director: '', actors: '', plot: '', imdbRating: '', imdbVotes: '', seasons: '', country: '', awards: '' };
+      show.meta = meta;
+      // Cache locally
+      if (meta.poster) omdbMetaSet(show.title, meta);
+      console.log('[WL] enriched:', show.title, '| poster:', !!meta.poster, `(${omdbToday.value}/${OMDB_LIMIT})`);
+      // Write to sheet — look up row live
+      const sheetRow = await gsFindRowByTitle(show.title);
+      if (sheetRow) await gsUpdateCell(sheetRow, COL.META, JSON.stringify(meta));
     } catch (e) { console.warn('[WL] enrich failed:', show.title, e); }
   }
-  cacheSet(LS_SHOWS, shows.value);
   enriching.value = false; enrichMsg.value = '';
 }
 
@@ -242,7 +278,11 @@ async function addShow() {
     let meta: ShowMeta | null = null;
     if (OMDB_KEY && !atLimit()) {
       const data = await callOmdb(newShow.value.title, newShow.value.medium).catch(() => null);
-      if (data) { meta = parseMeta(data); if (!newShow.value.keyword && meta.genre) newShow.value.keyword = meta.genre.split(',')[0]?.trim() ?? ''; }
+      if (data) {
+        meta = parseMeta(data);
+        if (!newShow.value.keyword && meta.genre) newShow.value.keyword = meta.genre.split(',')[0]?.trim() ?? '';
+        if (meta.poster) omdbMetaSet(newShow.value.title, meta);
+      }
     }
     const row = ['', '', '', '', ''];
     row[COL.STATUS]  = newShow.value.status;
@@ -251,8 +291,8 @@ async function addShow() {
     row[COL.MEDIUM]  = newShow.value.medium;
     row[COL.META]    = meta ? JSON.stringify(meta) : '';
     await gsAppendRow(row);
-    shows.value.push({ id: String(Date.now()), rowIndex: shows.value.length + 2, status: newShow.value.status, title: newShow.value.title, keyword: newShow.value.keyword, medium: newShow.value.medium, meta });
-    cacheSet(LS_SHOWS, shows.value);
+    // Add to local list immediately, rowIndex not needed since we always look up live
+    shows.value.push({ id: String(Date.now()), status: newShow.value.status, title: newShow.value.title, keyword: newShow.value.keyword, medium: newShow.value.medium, meta });
     saveMsg.value = '✓ Added!';
     newShow.value = { status: 'o', title: '', keyword: '', medium: 'TV' };
     setTimeout(() => { addModalOpen.value = false; saveMsg.value = ''; }, 1200);
@@ -260,7 +300,7 @@ async function addShow() {
   finally { saving.value = false; }
 }
 
-function forceRefresh() { localStorage.removeItem(LS_SHOWS); fetchShows(true); }
+function forceRefresh() { fetchShows(true); }
 
 // ── FILTERS + COMPUTED ────────────────────────────────
 const genres  = computed(() => ['all', ...Array.from(new Set(shows.value.map(s => s.keyword).filter(Boolean))).sort()]);
@@ -275,16 +315,25 @@ const filtered = computed(() => shows.value.filter(s => {
 const inProgress = computed(() => filtered.value.filter(s => s.status === 'ip'));
 const unwatched  = computed(() => filtered.value.filter(s => s.status === 'o'));
 const watched    = computed(() => filtered.value.filter(s => s.status === 'x'));
-const stats = computed(() => ({ total: shows.value.length, watching: shows.value.filter(s => s.status === 'ip').length, watched: shows.value.filter(s => s.status === 'x').length, upNext: shows.value.filter(s => s.status === 'o').length }));
+const stats = computed(() => ({
+  total:    shows.value.length,
+  watching: shows.value.filter(s => s.status === 'ip').length,
+  watched:  shows.value.filter(s => s.status === 'x').length,
+  upNext:   shows.value.filter(s => s.status === 'o').length,
+}));
 const statusMap: { key: StatusKey; label: string; color: string; icon: string }[] = [
   { key: 'ip', label: 'Watching', color: '#f59e0b', icon: '▶' },
   { key: 'o',  label: 'Up Next',  color: '#9ca3af', icon: '○' },
   { key: 'x',  label: 'Watched',  color: '#10b981', icon: '✓' },
 ];
-function ratingColor(r: string): string { const n = parseFloat(r); if (isNaN(n)) return 'var(--dim)'; return n >= 8 ? '#f59e0b' : n >= 6.5 ? '#10b981' : '#9ca3af'; }
+function ratingColor(r: string): string {
+  const n = parseFloat(r);
+  if (isNaN(n)) return 'var(--dim)';
+  return n >= 8 ? '#f59e0b' : n >= 6.5 ? '#10b981' : '#9ca3af';
+}
 
 onMounted(() => {
-  console.log('[WL] Sheet ID:', GS_SHEET_ID, '| OMDB:', !!OMDB_KEY, '| GS email:', GS_EMAIL);
+  console.log('[WL] Sheet ID:', GS_SHEET_ID, '| OMDB:', !!OMDB_KEY);
   fetchShows();
 });
 </script>
@@ -339,6 +388,7 @@ onMounted(() => {
 
     <main v-else class="wl-main">
       <div class="wl-inner">
+        <button class="btn random" v-on:click="() =>{ router.push('/pick')}">Randomizer</button>
 
         <section v-if="inProgress.length" class="row-section">
           <h2 class="row-title"><span class="row-dot row-dot--ip"></span>Currently Watching</h2>
@@ -503,7 +553,7 @@ onMounted(() => {
 </template>
 
 <style>
-html, body { overflow-x: hidden; max-width: 100vw; margin: 0; padding: 0; background: #0a0a0f; }
+html, body { overflow-x: hidden; max-width: 100vw; margin: 0; padding: 0; background: #0a0a0f; scrollbar-gutter: stable; }
 </style>
 
 <style scoped>
@@ -515,7 +565,15 @@ html, body { overflow-x: hidden; max-width: 100vw; margin: 0; padding: 0; backgr
   --font-display: 'Bebas Neue', sans-serif; --font-body: 'Outfit', sans-serif;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-.wl { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+.wl {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  --grid-cols: 7;
+  --grid-cols-featured: 6;
+}
 
 .wl-inner { max-width: 2200px; margin: 0 auto; padding: 0 4rem; }
 
@@ -579,8 +637,14 @@ html, body { overflow-x: hidden; max-width: 100vw; margin: 0; padding: 0; backgr
 .row-count { font-family: var(--font-body); font-size: 0.88rem; font-weight: 400; color: var(--dim); }
 
 /* CARD GRID */
-.card-row         { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 1.4rem; }
-.card-row--featured { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 7), 1fr);
+  gap: 1.4rem;
+}
+.card-row--featured {
+  grid-template-columns: repeat(var(--grid-cols-featured, 6), 1fr);
+}
 .card-row--dim .card       { opacity: 0.58; }
 .card-row--dim .card:hover { opacity: 1; }
 
@@ -666,24 +730,94 @@ select.form-input option { background: #1c1c27; color: #e4e4f0; }
 .save-msg { font-size: 0.82rem; color: var(--watched); text-align: center; min-height: 1.2em; }
 .save-msg--err { color: var(--accent); }
 
+/* BUTTON */
+.btn {
+  width: 130px;
+  height: 40px;
+  color: #fff;
+  border-radius: 5px;
+  padding: 10px 25px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 500;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  display: inline-block;
+   box-shadow:inset 2px 2px 2px 0px rgba(255,255,255,.5),
+   7px 7px 20px 0px rgba(0,0,0,.1),
+   4px 4px 5px 0px rgba(0,0,0,.1);
+  outline: none;
+  margin-bottom: 20px;
+}
+
+/* RANDOM */
+.random {
+  width: 130px;
+  height: 40px;
+  line-height: 42px;
+  padding: 0;
+  border: none;
+  background: rgb(255,27,0);
+background: linear-gradient(0deg, rgba(255,27,0,1) 0%, rgba(251,75,2,1) 100%);
+}
+.random:hover {
+  color: #f0094a;
+  background: transparent;
+   box-shadow:none;
+}
+.random:before,
+.random:after{
+  content:'';
+  position:absolute;
+  top:0;
+  right:0;
+  height:2px;
+  width:0;
+  background: #f0094a;
+  box-shadow:
+   -1px -1px 5px 0px #fff,
+   7px 7px 20px 0px #0003,
+   4px 4px 5px 0px #0002;
+  transition:400ms ease all;
+}
+.random:after{
+  right:inherit;
+  top:inherit;
+  left:0;
+  bottom:0;
+}
+.random:hover:before,
+.random:hover:after{
+  width:100%;
+  transition:800ms ease all;
+}
+
 /* RESPONSIVE */
-@media (max-width: 1200px) { .wl-inner { padding: 0 2.5rem; } .detail-layout { grid-template-columns: 240px 1fr; } }
+@media (max-width: 1800px) { .wl { --grid-cols: 6; --grid-cols-featured: 5; } }
+@media (max-width: 1400px) { .wl { --grid-cols: 5; --grid-cols-featured: 4; } }
+@media (max-width: 1200px) {
+  .wl { --grid-cols: 4; --grid-cols-featured: 4; }
+  .wl-inner { padding: 0 2.5rem; }
+  .detail-layout { grid-template-columns: 240px 1fr; }
+}
 @media (max-width: 860px) {
+  .wl { --grid-cols: 3; --grid-cols-featured: 3; }
   .wl-inner { padding: 0 1.5rem; }
   .detail-layout { grid-template-columns: 1fr; }
   .detail-poster-col { aspect-ratio: 16/9; border-radius: 16px 16px 0 0; max-height: 280px; }
   .detail-poster { object-position: center 20%; min-height: unset; }
   .detail-poster-placeholder { min-height: 220px; }
-  .card-row { grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); }
 }
 @media (max-width: 600px) {
+  .wl { --grid-cols: 2; --grid-cols-featured: 2; }
   .wl-inner { padding: 0 1rem; }
   .wl-header-row { flex-wrap: wrap; gap: 0.75rem; }
   .header-stats  { order: 3; width: 100%; justify-content: space-around; padding-bottom: 0.6rem; gap: 0; }
   .header-right  { margin-left: auto; }
   .search-input  { width: 100%; }
   .search-wrap   { width: 100%; }
-  .card-row      { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.8rem; }
+  .card-row      { gap: 0.8rem; }
   .row-title     { font-size: 1.35rem; }
   .modal-backdrop { padding: 0; align-items: flex-end; }
   .modal { border-radius: 16px 16px 0 0; max-height: 95vh; }

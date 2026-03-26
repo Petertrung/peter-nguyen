@@ -751,8 +751,6 @@ const activeJob = ref<Job>(jobs[0]!);
   gap: 1rem;
 }
 
-.skill-row {}
-
 .skill-meta {
   display: flex;
   justify-content: space-between;

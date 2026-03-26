@@ -65,7 +65,6 @@ const filters: (VideoType | 'all')[] = ['all', 'short film', 'event', 'vlog', 'p
 <style scoped>
 .portfolio {
     padding: 2rem;
-    width: 70vw;
     align-items: flex-start;
     margin: 0 auto;
     min-height: 100vh;
@@ -157,6 +156,9 @@ h1 {
 }
 
 @media (min-width: 1024px) {
+    .portfolio{
+        width: 70vw;
+    }
     .filters{
         flex: .3;
     }

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router'
-const router = useRouter();
 
 // ── TYPES ──────────────────────────────────────────────
 interface ShowMeta {
@@ -388,7 +386,6 @@ onMounted(() => {
 
     <main v-else class="wl-main">
       <div class="wl-inner">
-        <button class="btn random" v-on:click="() =>{ router.push('/pick')}">Randomizer</button>
 
         <section v-if="inProgress.length" class="row-section">
           <h2 class="row-title"><span class="row-dot row-dot--ip"></span>Currently Watching</h2>
@@ -675,9 +672,9 @@ html, body { overflow-x: hidden; max-width: 100vw; margin: 0; padding: 0; backgr
 .empty-state { text-align: center; padding: 5rem; color: var(--dim); font-size: 1rem; }
 
 /* MODAL SHARED */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.86); backdrop-filter: blur(8px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.86); backdrop-filter: blur(8px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: max(1.5rem, env(safe-area-inset-top)) 1.5rem 1.5rem; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-height: 93vh; overflow-y: auto; position: relative; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-.modal-close { position: absolute; top: 0.9rem; right: 0.9rem; background: rgba(0,0,0,0.55); border: 1px solid var(--border); color: var(--text); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; z-index: 10; transition: background 0.2s; }
+.modal-close { position: absolute; top: max(0.9rem, env(safe-area-inset-top, 0.9rem)); right: max(0.9rem, env(safe-area-inset-right, 0.9rem)); background: rgba(0,0,0,0.55); border: 1px solid var(--border); color: var(--text); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; z-index: 10; transition: background 0.2s; }
 .modal-close:hover { background: rgba(255,255,255,0.12); }
 
 /* DETAIL MODAL */
@@ -729,69 +726,6 @@ select.form-input option { background: #1c1c27; color: #e4e4f0; }
 .form-actions { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; }
 .save-msg { font-size: 0.82rem; color: var(--watched); text-align: center; min-height: 1.2em; }
 .save-msg--err { color: var(--accent); }
-
-/* BUTTON */
-.btn {
-  width: 130px;
-  height: 40px;
-  color: #fff;
-  border-radius: 5px;
-  padding: 10px 25px;
-  font-family: 'Lato', sans-serif;
-  font-weight: 500;
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  position: relative;
-  display: inline-block;
-   box-shadow:inset 2px 2px 2px 0px rgba(255,255,255,.5),
-   7px 7px 20px 0px rgba(0,0,0,.1),
-   4px 4px 5px 0px rgba(0,0,0,.1);
-  outline: none;
-  margin-bottom: 20px;
-}
-
-/* RANDOM */
-.random {
-  width: 130px;
-  height: 40px;
-  line-height: 42px;
-  padding: 0;
-  border: none;
-  background: rgb(255,27,0);
-background: linear-gradient(0deg, rgba(255,27,0,1) 0%, rgba(251,75,2,1) 100%);
-}
-.random:hover {
-  color: #f0094a;
-  background: transparent;
-   box-shadow:none;
-}
-.random:before,
-.random:after{
-  content:'';
-  position:absolute;
-  top:0;
-  right:0;
-  height:2px;
-  width:0;
-  background: #f0094a;
-  box-shadow:
-   -1px -1px 5px 0px #fff,
-   7px 7px 20px 0px #0003,
-   4px 4px 5px 0px #0002;
-  transition:400ms ease all;
-}
-.random:after{
-  right:inherit;
-  top:inherit;
-  left:0;
-  bottom:0;
-}
-.random:hover:before,
-.random:hover:after{
-  width:100%;
-  transition:800ms ease all;
-}
 
 /* RESPONSIVE */
 @media (max-width: 1800px) { .wl { --grid-cols: 6; --grid-cols-featured: 5; } }

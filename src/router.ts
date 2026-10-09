@@ -6,6 +6,8 @@ import Business from "./views/Business.vue";
 import Resume from "./views/Resume.vue";
 import Watchlist from "./views/Watchlist.vue";
 import Randomizer from "./views/Randomizer.vue";
+import Resturaunt from "./views/Resturaunt.vue";
+import Combine from "./views/Combine.vue";
 
 const routes = [
   { path: "/", component: Home },
@@ -14,6 +16,8 @@ const routes = [
   { path: "/business", component: Business },
   { path: "/watch", component: Watchlist },
   { path: "/pick", component: Randomizer },
+  { path: "/restaurant", component: Resturaunt },
+  { path: "/combine", component: Combine }
 ];
 
 export const router = createRouter({

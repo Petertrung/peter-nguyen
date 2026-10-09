@@ -49,7 +49,9 @@ interface RadarPoint {
 }
 
 const apiUrl = 'https://sheetdb.io/api/v1/qbrvaxt05k5zv?gid=1427160562'
+const comparisonsUrl = 'https://docs.google.com/spreadsheets/d/1zKczriMFJFoZrKq-VvhVyTKH22hjK5LCJXr--IWl2Q8/export?format=csv&gid=1660336706'
 const cacheKey = 'combine-results-v2'
+const comparisonsCacheKey = 'combine-player-comparisons-v1'
 const cacheMaxAge = 15 * 60 * 1000
 const radarCenter = { x: 230, y: 195 }
 const radarRadius = 105
@@ -99,9 +101,11 @@ const sheetFields: Record<StatKey, string> = {
 }
 
 const players = ref<CombinePlayer[]>([])
+const playerComparisons = ref<Record<string, Partial<Record<StatKey, string>>>>({})
 const loading = ref(true)
 const errorMessage = ref('')
 const refreshMessage = ref('')
+const comparisonMessage = ref('')
 const activeView = ref<'events' | 'players'>('events')
 const selectedEvent = ref<StatKey>('fortyYardDash')
 const selectedPlayerName = ref('')
@@ -118,6 +122,10 @@ const selectedMetric = computed(() =>
 
 const selectedPlayer = computed(() =>
   players.value.find((player) => player.name === selectedPlayerName.value),
+)
+
+const selectedPlayerComparisons = computed(() =>
+  selectedPlayer.value ? playerComparisons.value[selectedPlayer.value.name] ?? {} : {},
 )
 
 const selectedImageUrl = computed(() =>
@@ -251,6 +259,127 @@ function applyPlayers(nextPlayers: CombinePlayer[]) {
   }
 }
 
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let quoted = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        field += '"'
+        index += 1
+      } else if (character === '"') {
+        quoted = false
+      } else {
+        field += character
+      }
+    } else if (character === '"' && field.length === 0) {
+      quoted = true
+    } else if (character === ',') {
+      row.push(field)
+      field = ''
+    } else if (character === '\n' || character === '\r') {
+      row.push(field)
+      if (row.some((cell) => cell.trim())) rows.push(row)
+      row = []
+      field = ''
+      if (character === '\r' && text[index + 1] === '\n') index += 1
+    } else {
+      field += character
+    }
+  }
+
+  if (field.length || row.length) {
+    row.push(field)
+    if (row.some((cell) => cell.trim())) rows.push(row)
+  }
+
+  return rows
+}
+
+function parseComparisons(rows: string[][]): Record<string, Partial<Record<StatKey, string>>> {
+  const [headers, ...dataRows] = rows
+  if (!headers?.includes('Name')) {
+    throw new Error('The NFL comparison sheet is missing the Name column.')
+  }
+
+  const nameIndex = headers.indexOf('Name')
+  const statColumns = stats.flatMap((stat) => {
+    const index = headers.indexOf(sheetFields[stat.key])
+    return index >= 0 ? [{ index, key: stat.key }] : []
+  })
+  const parsed: Record<string, Partial<Record<StatKey, string>>> = {}
+
+  for (const row of dataRows) {
+    const name = row[nameIndex]?.trim()
+    if (!name) continue
+
+    const comparisons: Partial<Record<StatKey, string>> = {}
+    for (const { index, key } of statColumns) {
+      const comparisonName = row[index]?.trim()
+      if (comparisonName) comparisons[key] = comparisonName
+    }
+    parsed[name] = comparisons
+  }
+
+  return parsed
+}
+
+function isComparisonMap(value: unknown): value is Record<string, Partial<Record<StatKey, string>>> {
+  return isRecord(value)
+    && Object.values(value).every((comparison) =>
+      isRecord(comparison)
+      && Object.entries(comparison).every(([key, name]) => key in sheetFields && typeof name === 'string'),
+    )
+}
+
+function readCachedComparisons(): { comparisons: Record<string, Partial<Record<StatKey, string>>>; savedAt: number } | null {
+  try {
+    const cached = localStorage.getItem(comparisonsCacheKey)
+    if (!cached) return null
+
+    const parsed: unknown = JSON.parse(cached)
+    if (!isRecord(parsed) || !isComparisonMap(parsed.comparisons) || typeof parsed.savedAt !== 'number') return null
+
+    return {
+      comparisons: parsed.comparisons,
+      savedAt: parsed.savedAt,
+    }
+  } catch (error) {
+    console.warn('Could not read cached NFL comparisons.', error)
+    return null
+  }
+}
+
+async function loadComparisons() {
+  const cached = readCachedComparisons()
+  if (cached) playerComparisons.value = cached.comparisons
+  if (cached && Date.now() - cached.savedAt < cacheMaxAge) return
+
+  try {
+    const response = await fetch(comparisonsUrl)
+    if (!response.ok) {
+      throw new Error(`NFL comparisons could not be loaded (HTTP ${response.status}).`)
+    }
+
+    const comparisons = parseComparisons(parseCsv(await response.text()))
+    playerComparisons.value = comparisons
+    comparisonMessage.value = ''
+    try {
+      localStorage.setItem(comparisonsCacheKey, JSON.stringify({ savedAt: Date.now(), comparisons }))
+    } catch (error) {
+      console.warn('Could not save NFL comparisons locally.', error)
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred while loading NFL comparisons.'
+    comparisonMessage.value = cached ? `${message} Showing saved comparisons.` : message
+  }
+}
+
 function readCachedPlayers(): { players: CombinePlayer[]; savedAt: number } | null {
   try {
     const cached = localStorage.getItem(cacheKey)
@@ -370,7 +499,10 @@ function formatHeight(value: string): string {
   return `${feet}′${inches}″`
 }
 
-onMounted(() => loadPlayers())
+onMounted(() => {
+  void loadPlayers()
+  void loadComparisons()
+})
 </script>
 
 <template>
@@ -553,8 +685,14 @@ onMounted(() => loadPlayers())
               <dd>
                 {{ stat.key === 'height' ? formatHeight(selectedPlayer[stat.key]) : displayValue(selectedPlayer[stat.key], stat.suffix) }}
               </dd>
+              <p v-if="selectedPlayerComparisons[stat.key]" class="stat-comparison">
+                NFL comp: {{ selectedPlayerComparisons[stat.key] }}
+              </p>
             </div>
           </dl>
+          <p v-if="comparisonMessage" class="comparison-message" role="status">
+            {{ comparisonMessage }}
+          </p>
         </article>
       </template>
     </section>
@@ -954,6 +1092,20 @@ select {
   font-size: 1.02rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+}
+
+.stat-comparison {
+  margin-top: 0.3rem;
+  color: var(--accent);
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.comparison-message {
+  margin-top: 0.75rem;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  opacity: 0.75;
 }
 
 .data-credit {

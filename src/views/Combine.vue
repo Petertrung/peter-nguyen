@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import PageNavigation from '@/components/PageNavigation.vue'
 
 interface CombinePlayer {
   name: string
@@ -508,13 +509,26 @@ onMounted(() => {
 <template>
   <main class="combine-page">
     <header class="page-header">
-      <RouterLink class="home-link" to="/" aria-label="Back to home">← Home</RouterLink>
-      <p class="eyebrow">ATHLETIC PERFORMANCE</p>
-      <h1>Combine Results</h1>
-      <p class="intro">2026 Combine 10/3 - 10/4</p>
+      <div class="header-topline">
+        <PageNavigation />
+        <p class="eyebrow">ATHLETIC PERFORMANCE <span> / 01</span></p>
+      </div>
+      <div class="header-copy">
+        <p class="eyebrow">FIELD NOTES · YOUTH FOOTBALL</p>
+        <h1>Combine <span>results</span></h1>
+        <p class="intro">A closer look at the numbers, effort, and standout moments.</p>
+      </div>
     </header>
 
     <section class="results-panel" aria-label="Combine results">
+      <div class="year-switch-wrap">
+        <div class="year-switch" role="tablist" aria-label="Combine year">
+          <button type="button" role="tab" aria-selected="true" class="year-tab active">2026</button>
+          <button type="button" role="tab" aria-selected="false" class="year-tab" disabled aria-label="2027, coming soon" title="Coming in 2027">2027 <span>SOON</span></button>
+        </div>
+        <p class="season-note"><span class="season-dot" aria-hidden="true"></span> Current season · Oct 3—4</p>
+      </div>
+
       <div class="view-switch" role="tablist" aria-label="Results view">
         <button
           type="button"
@@ -558,11 +572,13 @@ onMounted(() => {
         <div class="selector-row">
           <div>
             <label for="event-select">Choose an event</label>
-            <select id="event-select" v-model="selectedEvent">
-              <option v-for="event in availableEvents" :key="event.key" :value="event.key">
-                {{ event.label }}
-              </option>
-            </select>
+            <div class="selector-control">
+              <select id="event-select" v-model="selectedEvent">
+                <option v-for="event in availableEvents" :key="event.key" :value="event.key">
+                  {{ event.label }}
+                </option>
+              </select>
+            </div>
           </div>
           <p v-if="selectedMetric" class="ranking-hint">
             {{ selectedMetric.lowerIsBetter ? 'Fastest time ranks first' : 'Highest result ranks first' }}
@@ -590,11 +606,13 @@ onMounted(() => {
         <div class="selector-row player-selector">
           <div>
             <label for="player-select">Choose a player</label>
-            <select id="player-select" v-model="selectedPlayerName">
-              <option v-for="player in players" :key="player.name" :value="player.name">
-                {{ player.name }}
-              </option>
-            </select>
+            <div class="selector-control">
+              <select id="player-select" v-model="selectedPlayerName">
+                <option v-for="player in players" :key="player.name" :value="player.name">
+                  {{ player.name }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -702,69 +720,152 @@ onMounted(() => {
 
 <style scoped>
 .combine-page {
-  --accent: #48c9a5;
+  --accent: #a6edc6;
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
-  width: min(100%, 1080px);
+  width: min(100%, 1120px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 3rem 1.25rem 2rem;
+  padding: 2.25rem 1.5rem 3rem;
 }
 
 .page-header {
-  position: relative;
-  margin: 1.5rem 0 2rem;
-  text-align: center;
+  margin: 0 0 2.5rem;
 }
 
-.home-link {
-  position: absolute;
-  top: 0;
-  left: 0;
-  color: var(--color-text);
-  font-size: 0.9rem;
+.header-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
+}
+
+.header-topline .eyebrow span {
+  color: #737a73;
+}
+
+.header-copy {
+  max-width: 720px;
+  padding-top: clamp(2rem, 5vw, 3.5rem);
 }
 
 .eyebrow {
   color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  font: 600 .68rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .14em;
+  text-transform: uppercase;
 }
 
 .page-header h1 {
-  margin-top: 0.35rem;
+  margin-top: .75rem;
   color: var(--color-heading);
-  font-size: clamp(2rem, 5vw, 3rem);
-  font-weight: 750;
-  letter-spacing: -0.045em;
-  line-height: 1.15;
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 680;
+  letter-spacing: -.075em;
+  line-height: .98;
+}
+
+.page-header h1 span {
+  color: #929991;
+  font-weight: 450;
 }
 
 .intro {
-  margin-top: 0.65rem;
-  color: var(--color-text);
-  opacity: 0.75;
+  max-width: 34rem;
+  margin-top: 1rem;
+  color: #a8ada6;
+  font-size: clamp(.95rem, 1.8vw, 1.08rem);
+  line-height: 1.65;
 }
 
 .results-panel {
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 18px;
-  background: var(--color-background-soft);
-  box-shadow: 0 20px 60px rgb(0 0 0 / 0.08);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .025);
+  box-shadow: 0 28px 90px rgb(0 0 0 / .22);
+}
+
+.year-switch-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .018);
+}
+
+.year-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .25rem;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .12);
+}
+
+.year-tab {
+  display: inline-flex;
+  min-height: 2.2rem;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .85rem;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #9ba19a;
+  font: 600 .75rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
+}
+
+.year-tab.active {
+  border-color: rgba(166, 237, 198, .2);
+  background: rgba(166, 237, 198, .1);
+  color: #c8f3d9;
+}
+
+.year-tab:disabled {
+  color: #555b55;
+  cursor: not-allowed;
+}
+
+.year-tab:disabled span {
+  color: #505650;
+  font-size: .55rem;
+  letter-spacing: .1em;
+}
+
+.season-note {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  color: #858c85;
+  font: 500 .67rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
+}
+
+.season-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(166, 237, 198, .55);
 }
 
 .view-switch {
   display: flex;
-  gap: 0.5rem;
-  padding: 0.8rem;
-  border-bottom: 1px solid var(--color-border);
+  gap: .35rem;
+  padding: .65rem 1.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
 }
 
 .view-switch button,
 .secondary-button {
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 4px;
   background: transparent;
   color: var(--color-text);
   cursor: pointer;
@@ -772,22 +873,31 @@ onMounted(() => {
 }
 
 .view-switch button {
-  padding: 0.65rem 1rem;
-  font-size: 0.9rem;
-  font-weight: 650;
+  position: relative;
+  padding: .8rem .9rem .9rem;
+  color: #969c96;
+  font-size: .78rem;
+  font-weight: 600;
 }
 
 .view-switch button.active {
-  border-color: var(--color-border);
-  background: var(--color-background);
-  color: var(--color-heading);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
+  color: #e9eee9;
+}
+
+.view-switch button.active::after {
+  position: absolute;
+  right: .85rem;
+  bottom: -1px;
+  left: .85rem;
+  height: 2px;
+  background: var(--accent);
+  content: '';
 }
 
 .refresh-message {
   padding: 0.55rem 1rem;
   border-bottom: 1px solid var(--color-border);
-  color: var(--color-text);
+  color: #a7ada7;
   font-size: 0.8rem;
 }
 
@@ -802,31 +912,87 @@ onMounted(() => {
 .selector-row label {
   display: block;
   margin-bottom: 0.4rem;
-  color: var(--color-text);
+  color: #a7ada7;
   font-size: 0.8rem;
   font-weight: 650;
 }
 
-select {
+.selector-control {
+  position: relative;
+  width: fit-content;
   min-width: min(100%, 260px);
-  padding: 0.7rem 2.5rem 0.7rem 0.85rem;
-  border: 1px solid var(--color-border-hover);
-  border-radius: 9px;
-  background: var(--color-background);
-  color: var(--color-heading);
-  font: inherit;
-  font-size: 0.95rem;
+}
+
+.selector-control::after {
+  position: absolute;
+  top: 50%;
+  right: .9rem;
+  width: .42rem;
+  height: .42rem;
+  border-right: 1.5px solid #a6edc6;
+  border-bottom: 1.5px solid #a6edc6;
+  content: '';
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.selector-control:focus-within::after {
+  transform: translateY(-20%) rotate(225deg);
+}
+
+.selector-control select {
+  display: block;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: .8rem 2.75rem .8rem 1rem;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 8px;
+  outline: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025)), #171b19;
+  box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 5px 16px rgba(0,0,0,.14);
+  color: #f2f1ed;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .9rem;
+  font-weight: 500;
+  line-height: 1.3;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.selector-control select:hover {
+  border-color: rgba(166, 237, 198, .34);
+  background-color: #1b211e;
+}
+
+.selector-control select:focus-visible {
+  border-color: rgba(166, 237, 198, .68);
+  box-shadow: 0 0 0 3px rgba(166, 237, 198, .14), 0 1px 0 rgba(255,255,255,.05) inset;
+}
+
+.selector-control select option {
+  background: #171b19;
+  color: #f2f1ed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selector-control::after,
+  .selector-control select {
+    transition: none;
+  }
 }
 
 .ranking-hint {
   padding-bottom: 0.65rem;
-  color: var(--color-text);
+  color: #858c85;
   font-size: 0.82rem;
   opacity: 0.68;
 }
 
 .leaderboard {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(255, 255, 255, .08);
 }
 
 .leaderboard-heading,
@@ -839,7 +1005,7 @@ select {
 }
 
 .leaderboard-heading {
-  color: var(--color-text);
+  color: #798079;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -859,8 +1025,11 @@ select {
 
 .leaderboard-row {
   min-height: 4rem;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  transition: background-color 160ms ease;
 }
+
+.leaderboard-row:hover { background: rgba(166, 237, 198, .035); }
 
 .leaderboard-row:first-child {
   border-top: 0;
@@ -874,12 +1043,12 @@ select {
 }
 
 .player-name {
-  color: var(--color-heading);
+  color: #e5e9e4;
   font-weight: 600;
 }
 
 .event-result {
-  color: var(--color-heading);
+  color: #e5e9e4;
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -893,7 +1062,7 @@ select {
   justify-content: center;
   gap: 0.8rem;
   padding: 2rem;
-  color: var(--color-text);
+  color: #9da39d;
   text-align: center;
 }
 
@@ -903,8 +1072,9 @@ select {
 
 .secondary-button {
   padding: 0.55rem 0.9rem;
-  border-color: var(--color-border-hover);
-  background: var(--color-background);
+  border-color: rgba(255, 255, 255, .16);
+  background: #171b19;
+  color: #e5e9e4;
 }
 
 .loader {
@@ -917,7 +1087,7 @@ select {
 }
 
 .player-selector {
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgba(255, 255, 255, .1);
 }
 
 .player-profile {
@@ -957,11 +1127,9 @@ select {
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 70% 20%, rgb(255 255 255 / 0.22), transparent 38%),
-    var(--accent-soft);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 5px;
+  background: #1a201c;
   color: var(--accent);
   text-decoration: none;
 }
@@ -981,9 +1149,9 @@ select {
 .radar-section {
   min-width: 0;
   padding: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 13px;
-  background: var(--color-background);
+  border: 1px solid rgba(255, 255, 255, .11);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .12);
 }
 
 .radar-heading {
@@ -1002,7 +1170,7 @@ select {
 
 .radar-note,
 .radar-footnote {
-  color: var(--color-text);
+  color: #858c85;
   font-size: 0.74rem;
   opacity: 0.65;
 }
@@ -1046,7 +1214,7 @@ select {
 }
 
 .radar-label {
-  fill: var(--color-text);
+  fill: #a9afa9;
   font-size: 10px;
   font-weight: 600;
   paint-order: stroke;
@@ -1075,20 +1243,20 @@ select {
 .stat-card {
   min-height: 82px;
   padding: 0.85rem 0.9rem;
-  border: 1px solid var(--color-border);
-  border-radius: 11px;
-  background: var(--color-background);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .12);
 }
 
 .stat-card dt {
-  color: var(--color-text);
+  color: #8f968f;
   font-size: 0.75rem;
   opacity: 0.7;
 }
 
 .stat-card dd {
   margin-top: 0.2rem;
-  color: var(--color-heading);
+  color: #e5e9e4;
   font-size: 1.02rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -1103,14 +1271,14 @@ select {
 
 .comparison-message {
   margin-top: 0.75rem;
-  color: var(--color-text);
+  color: #9da39d;
   font-size: 0.8rem;
   opacity: 0.75;
 }
 
 .data-credit {
   margin-top: 1rem;
-  color: var(--color-text);
+  color: #727972;
   font-size: 0.76rem;
   opacity: 0.55;
   text-align: center;
@@ -1124,15 +1292,32 @@ select {
 
 @media (max-width: 700px) {
   .combine-page {
-    padding: 1.5rem 0.85rem;
+    padding: 1.25rem 1rem 2rem;
   }
 
   .page-header {
-    margin: 2.75rem 0 1.5rem;
+    margin: 0 0 1.5rem;
   }
 
-  .home-link {
-    top: -2.25rem;
+  .header-topline .eyebrow {
+    font-size: .58rem;
+    text-align: right;
+  }
+
+  .header-copy {
+    padding-top: 2rem;
+  }
+
+  .year-switch-wrap {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .75rem;
+    padding: .9rem 1rem;
+  }
+
+  .view-switch {
+    padding-right: 1rem;
+    padding-left: 1rem;
   }
 
   .selector-row {

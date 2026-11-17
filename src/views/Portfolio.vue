@@ -1,6 +1,7 @@
 <!-- src/views/Portfolio.vue -->
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import PageNavigation from '@/components/PageNavigation.vue'
 
 type VideoType = 'short film' | 'event' | 'vlog' | 'production'
 
@@ -37,130 +38,68 @@ const filters: (VideoType | 'all')[] = ['all', 'short film', 'event', 'vlog', 'p
 </script>
 
 <template>
-    <div class="portfolio center_content">
+    <main class="portfolio-shell">
+        <div class="portfolio-topbar"><PageNavigation /></div>
         <header class="portfolio-header">
-            <h1>Portfolio</h1>
-            <div class="filters">
-                <button v-for="f in filters" :key="f" :class="['filter-btn', { active: activeFilter === f }]"
-                    @click="activeFilter = f">
-                    {{ f }}
-                </button>
+            <div class="title-group">
+                <p class="eyebrow"><span></span> 4N PRODUCTIONS / SELECTED WORK</p>
+                <h1>Stories in <span>motion.</span></h1>
+                <p class="intro">A collection of films, events, and moments made along the way. - <a href="https://4nproduction.com" target="_blank" rel="noopener noreferrer">
+  4N Productions
+</a></p>
             </div>
+            <span class="work-count">{{ String(filtered.length).padStart(2, '0') }} <i>/ {{ String(videos.length).padStart(2, '0') }} FILMS</i></span>
         </header>
 
-        <div class="grid">
-            <div v-for="video in filtered" :key="video.id" class="card">
-                <a :href="`https://www.youtube.com/watch?v=${video.id}`" target="_blank" rel="noopener">
+        <nav class="filters" aria-label="Filter portfolio videos">
+            <button v-for="f in filters" :key="f" :class="['filter-btn', { active: activeFilter === f }]"
+                :aria-pressed="activeFilter === f" @click="activeFilter = f">
+                {{ f }}
+            </button>
+        </nav>
+
+        <section class="grid" aria-label="Selected video work">
+            <article v-for="video in filtered" :key="video.id" class="card">
+                <a :href="`https://www.youtube.com/watch?v=${video.id}`" target="_blank" rel="noopener noreferrer">
                     <div class="thumbnail">
-                        <img :src="`https://img.youtube.com/vi/${video.id}/mqdefault.jpg`" :alt="video.title" />
+                        <img :src="`https://img.youtube.com/vi/${video.id}/mqdefault.jpg`" :alt="video.title" loading="lazy" />
+                        <span class="play-mark" aria-hidden="true">↗</span>
                         <span class="badge">{{ video.type }}</span>
                     </div>
-                    <p class="title">{{ video.title }}</p>
+                    <div class="card-caption"><p class="title">{{ video.title }}</p><span class="card-arrow" aria-hidden="true">↗</span></div>
                 </a>
-            </div>
-        </div>
-    </div>
+            </article>
+        </section>
+    </main>
 </template>
 
 <style scoped>
-.portfolio {
-    padding: 2rem;
-    align-items: flex-start;
-    margin: 0 auto;
-    min-height: 100vh;
-}
-
-.portfolio-header {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    margin-bottom: 2rem;
-}
-
-h1 {
-    font-size: 2rem;
-    color: var(--color-heading);
-}
-
-.filters {
-    display: flex;
-    flex: 1.1;
-    gap: 0.5rem;
-    padding: 12px;
-}
-
-.filter-btn {
-    padding: 0.3rem 0.8rem;
-    border: 1px solid var(--color-border);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--color-text);
-    cursor: pointer;
-    text-transform: capitalize;
-    font-size: 0.85rem;
-    transition: all 0.2s ease;
-}
-
-.filter-btn.active,
-.filter-btn:hover {
-    background: var(--color-text);
-    color: var(--color-background);
-}
-
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.5rem;
-}
-
-.card a {
-    text-decoration: none;
-    color: inherit;
-}
-
-.thumbnail {
-    position: relative;
-    border-radius: 8px;
-    overflow: hidden;
-    aspect-ratio: 16/9;
-}
-
-.thumbnail img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.3s ease;
-}
-
-.card:hover .thumbnail img {
-    transform: scale(1.05);
-}
-
-.badge {
-    position: absolute;
-    bottom: 0.5rem;
-    left: 0.5rem;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    font-size: 0.7rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    text-transform: capitalize;
-}
-
-.title {
-    margin-top: 0.5rem;
-    font-size: 0.95rem;
-    color: var(--color-text);
-}
-
-@media (min-width: 1024px) {
-    .portfolio{
-        width: 70vw;
-    }
-    .filters{
-        flex: .3;
-    }
-}
+.portfolio-shell { --accent: #a6edc6; min-height: 100vh; width: 100%; padding: 0 clamp(1.25rem, 6.2vw, 7.5rem) 4rem; color: #f2f1ed; background: #121514; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.portfolio-topbar { display: flex; align-items: center; min-height: 88px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.portfolio-header { max-width: 1440px; margin: 0 auto; padding: clamp(3rem, 8vh, 6rem) 0 2rem; display: flex; align-items: end; justify-content: space-between; gap: 2rem; }
+.eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 1.35rem; color: #a2a6a0; font: 500 .68rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+.eyebrow span { width: 24px; height: 1px; background: var(--accent); }
+h1 { margin: 0; color: #f1f0eb; font-size: clamp(3rem, 6vw, 5.8rem); font-weight: 550; line-height: .98; letter-spacing: -.07em; }
+h1 span { color: var(--accent); }
+.intro { margin-top: 1rem; color: #a5a9a3; font-size: 1rem; line-height: 1.6; }
+.work-count { padding-bottom: 5px; color: var(--accent); font: 500 .7rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; white-space: nowrap; }
+.work-count i { color: #788078; font-style: normal; }
+.filters { max-width: 1440px; margin: 0 auto 1.5rem; display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-btn { padding: 9px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; background: transparent; color: #9b9f99; cursor: pointer; text-transform: capitalize; font: 500 .68rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease; }
+.filter-btn.active { color: #f1f0eb; border-color: rgba(166,237,198,.34); background: rgba(166,237,198,.07); }
+.grid { max-width: 1440px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 1.35rem; }
+.card { min-width: 0; }
+.card a { display: block; color: inherit; text-decoration: none; padding: 0; background: none; }
+.card a:hover { background: none; }
+.thumbnail { position: relative; overflow: hidden; aspect-ratio: 16/9; border: 1px solid rgba(255,255,255,.14); background: #1c211e; }
+.thumbnail::after { content: ""; position: absolute; inset: 35% 0 0; background: linear-gradient(transparent, rgba(0,0,0,.45)); pointer-events: none; }
+.thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 220ms cubic-bezier(.23,1,.32,1); }
+.play-mark { position: absolute; z-index: 1; top: 12px; right: 12px; display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(255,255,255,.55); border-radius: 50%; color: white; background: rgba(18,21,20,.55); opacity: 0; transform: translateY(3px); transition: opacity 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1); }
+.badge { position: absolute; z-index: 1; bottom: 11px; left: 12px; padding: 5px 8px; border: 1px solid rgba(166,237,198,.32); color: #dff6e9; background: rgba(18,21,20,.78); font: 500 .58rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .07em; }
+.card-caption { display: flex; align-items: flex-start; justify-content: space-between; gap: .8rem; padding: .8rem .1rem .3rem; }
+.title { margin: 0; color: #e6e6e0; font-size: .92rem; font-weight: 500; line-height: 1.45; }
+.card-arrow { color: var(--accent); font-size: .9rem; opacity: .7; }
+@media (hover: hover) and (pointer: fine) { .filter-btn:hover { color: #f1f0eb; border-color: rgba(166,237,198,.3); }.card:hover .thumbnail img { transform: scale(1.025); }.card:hover .play-mark { opacity: 1; transform: translateY(0); }.card:hover .card-arrow { opacity: 1; } }
+@media (max-width: 700px) { .portfolio-topbar { min-height: 74px; }.portfolio-header { align-items: flex-start; flex-direction: column; padding-top: 3rem; gap: 1.25rem; }.work-count { padding: 0; }.grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .thumbnail img, .play-mark { transition-duration: .01ms; } }
 </style>

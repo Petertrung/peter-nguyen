@@ -1,35 +1,30 @@
-<script setup>
-import { ref, onMounted } from 'vue'
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import AttventureIcon from '@/components/AttventureIcon.vue'
 import MovieList from '@/components/MovieList.vue'
 
-
 const loading = ref(true)
+let introTimer: number | undefined
 
 onMounted(() => {
-  setTimeout(() => {
-    loading.value = false
-  }, 3500) // 3.5 seconds
+  introTimer = window.setTimeout(() => { loading.value = false }, 3500)
+})
+
+onBeforeUnmount(() => {
+  if (introTimer) window.clearTimeout(introTimer)
 })
 </script>
 
 <template>
-  <div>
-    <transition name="fade">
-      <AttventureIcon v-if="loading" />
-      <MovieList v-else />
-    </transition>
-  </div>
+  <Transition name="intro" mode="out-in">
+    <AttventureIcon v-if="loading" />
+    <MovieList v-else />
+  </Transition>
 </template>
 
 <style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.5s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+.intro-enter-active,
+.intro-leave-active { transition: opacity 180ms ease; }
+.intro-enter-from,
+.intro-leave-to { opacity: 0; }
 </style>

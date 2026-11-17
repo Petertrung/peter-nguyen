@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import PageNavigation from '@/components/PageNavigation.vue';
 
 // --- TYPES ---
 interface Job {
@@ -166,6 +167,8 @@ const activeJob = ref<Job>(jobs[0]!);
 <template>
   <div class="resume-dashboard">
 
+    <div class="resume-topbar"><PageNavigation /></div>
+
     <!-- HEADER -->
     <header class="dash-header">
       <div class="header-left">
@@ -311,21 +314,19 @@ const activeJob = ref<Job>(jobs[0]!);
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap');
-
 /* ── ROOT VARS ── */
-:root {
-  --bg:         #0d0f14;
-  --surface:    #13161e;
-  --surface2:   #1a1e29;
-  --border:     #252a38;
-  --text:       #c8cdd8;
-  --text-dim:   #5a6070;
-  --accent:     #4fffb0;
-  --accent2:    #5b8cff;
-  --accent3:    #ff6b6b;
-  --mono:       'Space Mono', monospace;
-  --sans:       'DM Sans', sans-serif;
+.resume-dashboard {
+  --bg: #121514;
+  --surface: rgba(255, 255, 255, .035);
+  --surface2: rgba(255, 255, 255, .06);
+  --border: rgba(255, 255, 255, .12);
+  --text: #c6cbc5;
+  --text-dim: #8c938d;
+  --accent: #a6edc6;
+  --accent2: #9bb9ef;
+  --accent3: #ff9d83;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* ── RESET ── */
@@ -337,11 +338,13 @@ const activeJob = ref<Job>(jobs[0]!);
   color: var(--text);
   min-height: 100vh;
   padding: 2.5rem 2rem 4rem;
-  max-width: 1500px;
+  max-width: 1440px;
   width: 100%;
   margin: 0 auto;
   overflow-x: hidden;
 }
+
+.resume-topbar { display: flex; margin-bottom: 1.5rem; }
 
 /* ── HEADER ── */
 .dash-header {
@@ -387,18 +390,13 @@ const activeJob = ref<Job>(jobs[0]!);
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  animation: pulse 2s infinite;
+  box-shadow: 0 0 0 4px rgba(166, 237, 198, .12);
 }
 
 .live-label {
   font-family: var(--mono);
   font-size: 0.7rem;
   color: var(--accent);
-}
-
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 255, 176, 0.5); }
-  50% { box-shadow: 0 0 0 5px rgba(79, 255, 176, 0); }
 }
 
 /* ── STAT CARDS ── */

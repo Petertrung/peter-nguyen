@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import PageNavigation from '@/components/PageNavigation.vue';
 
 // ── TYPES ──────────────────────────────────────────────
 interface ShowMeta {
@@ -132,6 +133,7 @@ const eligible = computed(() => {
 
 // ── SLOT MACHINE ──────────────────────────────────────
 let spinIntervals: ReturnType<typeof setInterval>[] = [];
+let spinVersion = 0;
 
 function clearIntervals() { spinIntervals.forEach(clearInterval); spinIntervals = []; }
 
@@ -161,9 +163,25 @@ const lockedYear    = ref(false);
 const lockedRating  = ref(false);
 const lockedRuntime = ref(false);
 const lockedTitle   = ref(false);
+const reelsSlowing  = ref(false);
+
+type ReelKey = 'medium' | 'year' | 'rating' | 'runtime' | 'title';
+
+function startReels(keys: ReelKey[], intervalMs: number, wordCount: number) {
+  clearIntervals();
+  const update: Record<ReelKey, () => void> = {
+    medium: () => { reelMedium.value = randomFrom(mediumPool); },
+    year: () => { reelYear.value = randomFrom(yearPool); },
+    rating: () => { reelRating.value = randomFrom(ratingPool); },
+    runtime: () => { reelRuntime.value = randomFrom(runtimePool); },
+    title: () => { reelTitle.value = randomWords(wordCount); },
+  };
+  for (const key of keys) spinIntervals.push(setInterval(update[key], intervalMs));
+}
 
 async function spin() {
   if (eligible.value.length === 0) return;
+  const runVersion = ++spinVersion;
 
   const winner = randomFrom(eligible.value);
   picked.value  = winner;
@@ -173,97 +191,71 @@ async function spin() {
 
   const wordCount = titleWordCount(winner.title);
 
-  // All reels blazing fast — blur effect kicks in via CSS
-  spinIntervals.push(setInterval(() => { reelMedium.value  = randomFrom(mediumPool); }, 30));
-  spinIntervals.push(setInterval(() => { reelYear.value    = randomFrom(yearPool); }, 25));
-  spinIntervals.push(setInterval(() => { reelRating.value  = randomFrom(ratingPool); }, 28));
-  spinIntervals.push(setInterval(() => { reelRuntime.value = randomFrom(runtimePool); }, 32));
-  spinIntervals.push(setInterval(() => { reelTitle.value   = randomWords(wordCount); }, 60));
-
-  // Lock Medium — 1.2s
-  await delay(1200);
+  reelsSlowing.value = false;
+  startReels(['medium', 'year', 'rating', 'runtime', 'title'], 24, wordCount);
+  await delay(360);
+  if (runVersion !== spinVersion) return;
+  reelsSlowing.value = true;
+  startReels(['medium', 'year', 'rating', 'runtime', 'title'], 42, wordCount);
+  await delay(260);
+  if (runVersion !== spinVersion) return;
+  reelsSlowing.value = false;
+  startReels(['medium', 'year', 'rating', 'runtime', 'title'], 32, wordCount);
+  await delay(220);
+  if (runVersion !== spinVersion) return;
   clearIntervals();
+
+  // First stop: three stats land together.
   reelMedium.value = winner.medium || '???';
-  lockedMedium.value = true;
-  phase.value = 'reveal-medium';
-  spinIntervals.push(setInterval(() => { reelYear.value    = randomFrom(yearPool); }, 25));
-  spinIntervals.push(setInterval(() => { reelRating.value  = randomFrom(ratingPool); }, 28));
-  spinIntervals.push(setInterval(() => { reelRuntime.value = randomFrom(runtimePool); }, 32));
-  spinIntervals.push(setInterval(() => { reelTitle.value   = randomWords(wordCount); }, 60));
-
-  // Lock Year — 0.7s later
-  await delay(700);
-  clearIntervals();
   reelYear.value = winner.meta?.year || '????';
-  lockedYear.value = true;
-  spinIntervals.push(setInterval(() => { reelRating.value  = randomFrom(ratingPool); }, 28));
-  spinIntervals.push(setInterval(() => { reelRuntime.value = randomFrom(runtimePool); }, 32));
-  spinIntervals.push(setInterval(() => { reelTitle.value   = randomWords(wordCount); }, 60));
-
-  // Lock Rating — 0.7s later
-  await delay(700);
-  clearIntervals();
   reelRating.value = winner.meta?.imdbRating || '?';
-  lockedRating.value = true;
-  spinIntervals.push(setInterval(() => { reelRuntime.value = randomFrom(runtimePool); }, 32));
-  spinIntervals.push(setInterval(() => { reelTitle.value   = randomWords(wordCount); }, 60));
+  lockedMedium.value = lockedYear.value = lockedRating.value = true;
+  phase.value = 'reveal-stats';
 
-  // Lock Runtime — 0.7s later
-  await delay(700);
+  // Second stop: runtime lands while the title keeps rolling.
+  reelsSlowing.value = false;
+  startReels(['runtime', 'title'], 30, wordCount);
+  await delay(380);
+  if (runVersion !== spinVersion) return;
+  reelsSlowing.value = true;
+  startReels(['runtime', 'title'], 58, wordCount);
+  await delay(300);
+  if (runVersion !== spinVersion) return;
+  reelsSlowing.value = false;
+  startReels(['runtime', 'title'], 34, wordCount);
+  await delay(180);
+  if (runVersion !== spinVersion) return;
   clearIntervals();
   reelRuntime.value = winner.meta?.runtime || '?';
   lockedRuntime.value = true;
-  phase.value = 'reveal-stats';
-  spinIntervals.push(setInterval(() => { reelTitle.value = randomWords(wordCount); }, 60));
-
-  // Title word-by-word lock — 0.8s later
-  await delay(800);
-  clearIntervals();
   phase.value = 'reveal-title';
 
-  const titleWords  = winner.title.trim().split(/\s+/);
-  const lockedWords = new Array<string>(titleWords.length).fill('');
-  let   wordIdx     = 0;
-
-  // Spin remaining unlocked words, lock one at a time
-  const lockWord = async () => {
-    if (wordIdx >= titleWords.length) {
-      reelTitle.value = winner.title;
-      lockedTitle.value = true;
-      phase.value = 'done';
-      return;
-    }
-
-    // Spin remaining positions while current locks
-    const spinRemaining = () => {
-      const parts = titleWords.map((w, i) => {
-        if (i < wordIdx) return w;           // already locked
-        if (i === wordIdx) return w;          // just locked, show it
-        return randomFrom(wordPool);          // still spinning
-      });
-      reelTitle.value = parts.join(' ');
-    };
-
-    // Lock current word
-    lockedWords[wordIdx] = titleWords[wordIdx]!;
-    wordIdx++;
-
-    // Spin the rest for 400ms, then lock next word
-    const interval = setInterval(spinRemaining, 60);
-    await delay(450);
-    clearInterval(interval);
-    await lockWord();
-  };
-
-  await lockWord();
+  // Final stop: the title slows down, lands, then reveals the selected movie.
+  startReels(['title'], 30, wordCount);
+  await delay(260);
+  if (runVersion !== spinVersion) return;
+  reelsSlowing.value = true;
+  startReels(['title'], 78, wordCount);
+  await delay(260);
+  if (runVersion !== spinVersion) return;
+  reelsSlowing.value = false;
+  startReels(['title'], 140, wordCount);
+  await delay(220);
+  if (runVersion !== spinVersion) return;
+  clearIntervals();
+  reelTitle.value = winner.title;
+  lockedTitle.value = true;
+  phase.value = 'done';
 }
 
 async function delay(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 function reset() {
+  spinVersion++;
   clearIntervals();
   phase.value   = 'idle';
   picked.value  = null;
+  reelsSlowing.value = false;
   lockedMedium.value = lockedYear.value = lockedRating.value = lockedRuntime.value = lockedTitle.value = false;
   reelMedium.value = reelYear.value = reelRating.value = reelRuntime.value = reelTitle.value = '???';
 }
@@ -276,6 +268,10 @@ function toggleFilter<T>(arr: T[], val: T) {
 const statusLabels: Record<string, string> = { ip: 'Watching', o: 'Up Next', x: 'Watched' };
 
 onMounted(fetchShows);
+onBeforeUnmount(() => {
+  spinVersion++;
+  clearIntervals();
+});
 </script>
 
 <template>
@@ -283,6 +279,8 @@ onMounted(fetchShows);
 
     <!-- BG grain -->
     <div class="picker-bg"></div>
+
+    <div class="picker-topbar"><PageNavigation /></div>
 
     <!-- HEADER -->
     <header class="picker-header">
@@ -372,6 +370,7 @@ onMounted(fetchShows);
                 <span class="reel-value"
                   :class="{
                     'reel-value--blur': !lockedMedium && phase !== 'idle',
+                    'reel-value--slow': reelsSlowing && !lockedMedium,
                     'reel-value--locked': lockedMedium
                   }">
                   {{ reelMedium }}
@@ -387,6 +386,7 @@ onMounted(fetchShows);
                 <span class="reel-value reel-value--sm"
                   :class="{
                     'reel-value--blur': !lockedYear && phase !== 'idle',
+                    'reel-value--slow': reelsSlowing && !lockedYear,
                     'reel-value--locked': lockedYear
                   }">
                   {{ reelYear }}
@@ -402,6 +402,7 @@ onMounted(fetchShows);
                 <span class="reel-value reel-value--sm"
                   :class="{
                     'reel-value--blur': !lockedRating && phase !== 'idle',
+                    'reel-value--slow': reelsSlowing && !lockedRating,
                     'reel-value--locked': lockedRating
                   }">
                   {{ reelRating }}
@@ -417,6 +418,7 @@ onMounted(fetchShows);
                 <span class="reel-value reel-value--sm"
                   :class="{
                     'reel-value--blur': !lockedRuntime && phase !== 'idle',
+                    'reel-value--slow': reelsSlowing && !lockedRuntime,
                     'reel-value--locked': lockedRuntime
                   }">
                   {{ reelRuntime }}
@@ -432,6 +434,7 @@ onMounted(fetchShows);
                 <span class="reel-value reel-value--title"
                   :class="{
                     'reel-value--blur': !lockedTitle && phase !== 'idle' && phase !== 'reveal-title',
+                    'reel-value--slow': reelsSlowing && !lockedTitle,
                     'reel-value--locking': phase === 'reveal-title',
                     'reel-value--locked': lockedTitle
                   }">
@@ -510,33 +513,28 @@ onMounted(fetchShows);
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
-
-:root {
-  --bg:        #07080d;
-  --surface:   #0f1018;
-  --surface2:  #181920;
-  --border:    #252630;
-  --text:      #e0e0f0;
-  --dim:       #55556a;
-  --accent:    #ff3c5f;
-  --gold:      #ffd700;
-  --cyan:      #00e5ff;
-  --green:     #00ff88;
-  --mono:      'Share Tech Mono', monospace;
-  --display:   'Bebas Neue', sans-serif;
-  --body:      'Outfit', sans-serif;
-}
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 .picker {
+  --bg: #121514;
+  --surface: rgba(255,255,255,.035);
+  --surface2: rgba(255,255,255,.06);
+  --border: rgba(255,255,255,.12);
+  --text: #f2f1ed;
+  --dim: #929991;
+  --accent: #a6edc6;
+  --gold: #f3c77a;
+  --cyan: #c7ead4;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-family: var(--body);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
+  padding: 0 clamp(1.25rem, 5vw, 5rem) 5rem;
   padding-bottom: 6rem;
 }
 
@@ -545,14 +543,15 @@ onMounted(fetchShows);
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
   background-size: 200px;
-  opacity: 0.6;
+  opacity: 0.32;
 }
 
 /* HEADER */
-.picker-header { text-align: center; padding: 3.5rem 2rem 1.5rem; position: relative; z-index: 1; }
-.picker-logo { font-family: var(--display); font-size: clamp(2.5rem, 7vw, 5rem); letter-spacing: 0.04em; line-height: 1; color: var(--text); }
+.picker-topbar { display: flex; align-items: center; max-width: 1040px; min-height: 88px; margin: 0 auto; border-bottom: 1px solid rgba(255,255,255,.1); position: relative; z-index: 1; }
+.picker-header { max-width: 960px; margin: 0 auto; text-align: left; padding: clamp(2.5rem, 6vh, 4rem) 0 2rem; position: relative; z-index: 1; }
+.picker-logo { font-family: var(--display); font-size: clamp(2.8rem, 6.5vw, 5.2rem); font-weight: 560; letter-spacing: -.07em; line-height: .98; color: var(--text); }
 .accent { color: var(--accent); }
-.picker-sub { font-size: 0.9rem; color: var(--dim); margin-top: 0.5rem; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; }
+.picker-sub { font-size: .95rem; color: #a5a9a3; margin-top: 1rem; letter-spacing: -.015em; }
 
 .picker-loading { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 8rem 2rem; color: var(--dim); }
 .picker-error   { text-align: center; padding: 4rem; color: var(--accent); }
@@ -565,8 +564,8 @@ onMounted(fetchShows);
 
 /* ── FILTER PANEL ── */
 .filter-panel {
-  max-width: 960px; margin: 0 auto 3rem; padding: 2rem 2.5rem;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  max-width: 960px; margin: 0 auto 2rem; padding: 1.5rem 1.75rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
   position: relative; z-index: 1;
   transition: opacity 0.4s, filter 0.4s;
   display: flex; flex-direction: column; gap: 1.5rem;
@@ -583,14 +582,14 @@ onMounted(fetchShows);
 .pill {
   background: var(--surface2); border: 1px solid var(--border); color: var(--dim);
   border-radius: 99px; padding: 0.35rem 0.9rem; font-size: 0.78rem;
-  font-family: var(--body); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  font-family: var(--body); cursor: pointer; transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease; white-space: nowrap;
 }
 .pill--sm { padding: 0.25rem 0.7rem; font-size: 0.72rem; }
 .pill:hover { border-color: var(--text); color: var(--text); }
-.pill--active          { background: rgba(255,60,95,0.12); border-color: var(--accent); color: var(--accent); }
+.pill--active          { background: rgba(166,237,198,.08); border-color: rgba(166,237,198,.38); color: var(--accent); }
 .pill--active.pill--ip { background: rgba(245,158,11,0.12); border-color: #f59e0b; color: #f59e0b; }
 .pill--active.pill--o  { background: rgba(156,163,175,0.12); border-color: #9ca3af; color: #d1d5db; }
-.pill--active.pill--x  { background: rgba(16,185,129,0.12); border-color: #10b981; color: #10b981; }
+.pill--active.pill--x  { background: rgba(166,237,198,.08); border-color: var(--accent); color: var(--accent); }
 
 .rating-slider-wrap { display: flex; align-items: center; gap: 1rem; flex: 1; }
 .rating-slider {
@@ -600,16 +599,16 @@ onMounted(fetchShows);
 .rating-slider::-webkit-slider-thumb {
   -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
   background: var(--accent); cursor: pointer; border: 2px solid var(--bg);
-  box-shadow: 0 0 8px rgba(255,60,95,0.5);
+  box-shadow: 0 0 0 3px rgba(166,237,198,.12);
 }
 .rating-val { font-family: var(--mono); font-size: 0.82rem; color: var(--gold); min-width: 60px; }
 
 .filter-count { text-align: center; font-size: 0.8rem; color: var(--dim); padding-top: 0.5rem; border-top: 1px solid var(--border); }
-.filter-count-n { font-family: var(--display); font-size: 1.4rem; color: var(--cyan); vertical-align: middle; margin-right: 0.3rem; }
+.filter-count-n { font-family: var(--mono); font-size: 1.1rem; color: var(--accent); vertical-align: middle; margin-right: 0.3rem; }
 
 /* ── SLOT MACHINE ── */
 .slot-machine {
-  max-width: 960px; margin: 0 auto 3rem;
+  max-width: 960px; margin: 0 auto 2rem;
   position: relative; z-index: 1;
   padding: 0 2rem;
 }
@@ -631,19 +630,17 @@ onMounted(fetchShows);
 .slot-machine--reveal-stats .slot-light,
 .slot-machine--reveal-title .slot-light,
 .slot-machine--done .slot-light {
-  animation: blink 0.4s ease-in-out infinite alternate;
-}
-@keyframes blink {
-  from { background: var(--dim); box-shadow: none; }
-  to   { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+  background: var(--accent);
+  border-color: rgba(166,237,198,.45);
+  box-shadow: 0 0 8px rgba(166,237,198,.2);
 }
 
 .slot-cabinet {
-  background: linear-gradient(180deg, #141520 0%, #0d0e16 100%);
-  border: 2px solid var(--border);
-  border-radius: 20px;
+  background: linear-gradient(180deg, #202622 0%, #191e1b 100%);
+  border: 1px solid var(--border);
+  border-radius: 7px;
   padding: 2rem 2.5rem 2.5rem;
-  box-shadow: 0 0 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04);
+  box-shadow: 0 22px 70px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,0.05);
   position: relative;
 }
 .slot-cabinet::before {
@@ -665,7 +662,7 @@ onMounted(fetchShows);
 }
 .reel--sm    { flex: 0.7; }
 .reel--title { flex: 2.5; }
-.reel--locked { filter: drop-shadow(0 0 10px var(--gold)); }
+.reel--locked { filter: none; }
 
 .reel-label {
   font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.14em;
@@ -673,18 +670,19 @@ onMounted(fetchShows);
 }
 
 .reel-window {
-  background: #08090f;
+  background: #111613;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 1rem 0.5rem;
+  padding: .75rem .5rem;
   text-align: center;
   position: relative;
   overflow: hidden;
-  min-height: 80px;
+  height: 82px;
+  min-height: 82px;
   display: flex; align-items: center; justify-content: center;
   box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
 }
-.reel-window--title { min-height: 80px; padding: 1rem; }
+.reel-window--title { height: 96px; min-height: 96px; padding: .75rem 1rem; }
 
 /* Scan line */
 .reel-scan {
@@ -708,45 +706,43 @@ onMounted(fetchShows);
 .reel-value {
   font-family: var(--mono); font-size: 1.4rem; font-weight: 700;
   color: var(--text); letter-spacing: 0.05em;
-  position: relative; z-index: 1; word-break: break-all; line-height: 1.2;
+  position: relative; z-index: 1; word-break: normal; overflow-wrap: anywhere; line-height: 1.2;
 }
 .reel-value--sm    { font-size: 1.1rem; }
-.reel-value--title { font-size: 1.3rem; letter-spacing: 0.06em; }
+.reel-value--title { display: -webkit-box; width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: clamp(.88rem, 1.7vw, 1.2rem); letter-spacing: .01em; line-height: 1.25; }
 
-.reel-value--blur {
-  color: var(--cyan);
-  text-shadow: 0 0 8px var(--cyan);
-  filter: blur(2.5px) brightness(1.3);
-  animation: flicker 0.03s linear infinite;
-}
+.reel-value--blur { color: var(--accent); filter: blur(1.5px); animation: reel-roll 110ms linear infinite; }
+.reel-value--slow { filter: blur(.45px); animation-duration: 320ms; }
 .reel-value--locking {
   color: var(--gold);
-  text-shadow: 0 0 16px var(--gold);
-  filter: blur(0.5px);
-  animation: flicker 0.08s linear infinite;
+  animation: reel-roll 220ms ease-out infinite;
 }
 .reel-value--locked {
-  color: var(--gold);
-  text-shadow: 0 0 20px rgba(255,215,0,0.6);
+  color: var(--accent);
+  text-shadow: none;
   filter: none;
-  animation: none;
+  animation: reel-lock 180ms cubic-bezier(.23,1,.32,1) both;
 }
-@keyframes flicker {
-  0%,100% { opacity: 1; }
-  50% { opacity: 0.85; }
+@keyframes reel-roll {
+  from { transform: translateY(-7px); opacity: .55; }
+  to { transform: translateY(7px); opacity: 1; }
+}
+@keyframes reel-lock {
+  from { transform: translateY(6px); opacity: .55; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* Controls */
 .slot-controls { display: flex; justify-content: center; }
 
 .spin-btn {
-  background: linear-gradient(135deg, var(--accent), #c0003a);
-  border: none; border-radius: 12px;
-  padding: 1rem 3.5rem;
+  background: var(--accent);
+  border: none; border-radius: 5px;
+  padding: .85rem 3rem;
   cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
-  transition: transform 0.1s, box-shadow 0.2s;
-  box-shadow: 0 4px 30px rgba(255,60,95,0.4);
+  transition: transform 140ms cubic-bezier(.23,1,.32,1), background-color 160ms ease;
+  box-shadow: 0 8px 24px rgba(166,237,198,.12);
   position: relative; overflow: hidden;
 }
 .spin-btn::before {
@@ -755,33 +751,33 @@ onMounted(fetchShows);
   background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 50%);
   pointer-events: none;
 }
-.spin-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 40px rgba(255,60,95,0.6); }
+.spin-btn:hover:not(:disabled) { transform: translateY(-2px); background: #bbf3d2; }
 .spin-btn:active:not(:disabled) { transform: scale(0.97); }
 .spin-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
-.spin-btn-text { font-family: var(--display); font-size: 2rem; letter-spacing: 0.15em; color: #fff; line-height: 1; }
-.spin-btn-sub  { font-family: var(--mono); font-size: 0.65rem; color: rgba(255,255,255,0.6); letter-spacing: 0.08em; }
+.spin-btn-text { font-family: var(--display); font-size: 1.35rem; font-weight: 700; letter-spacing: .1em; color: #142019; line-height: 1; }
+.spin-btn-sub  { font-family: var(--mono); font-size: 0.62rem; color: rgba(20,32,25,.68); letter-spacing: 0.04em; }
 
 .spinning-indicator { display: flex; gap: 0.6rem; align-items: center; padding: 1rem; }
 .spinning-dot {
   width: 10px; height: 10px; border-radius: 50%;
   background: var(--accent);
-  animation: bounce 0.6s ease-in-out infinite alternate;
+  animation: bounce 0.8s ease-in-out infinite alternate;
 }
-.spinning-dot:nth-child(2) { animation-delay: 0.15s; background: var(--gold); }
-.spinning-dot:nth-child(3) { animation-delay: 0.30s; background: var(--cyan); }
-@keyframes bounce { from { transform: translateY(0); opacity: 0.4; } to { transform: translateY(-8px); opacity: 1; } }
+.spinning-dot:nth-child(2) { animation-delay: 0.12s; background: #d6c39b; }
+.spinning-dot:nth-child(3) { animation-delay: 0.24s; background: #7caf91; }
+@keyframes bounce { from { transform: translateY(0); opacity: 0.55; } to { transform: translateY(-4px); opacity: 1; } }
 
 .again-btn {
   background: var(--surface2); border: 1px solid var(--border); color: var(--dim);
   border-radius: 8px; padding: 0.6rem 1.5rem; font-family: var(--body); font-size: 0.88rem;
-  cursor: pointer; transition: all 0.15s;
+  cursor: pointer; transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 .again-btn:hover { border-color: var(--text); color: var(--text); }
 .again-btn--inline { margin-top: 0.5rem; }
 
 /* ── RESULT CARD ── */
-.result-slide-enter-active { transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-.result-slide-enter-from   { opacity: 0; transform: translateY(40px); }
+.result-slide-enter-active { transition: opacity 220ms cubic-bezier(.23,1,.32,1), transform 220ms cubic-bezier(.23,1,.32,1); }
+.result-slide-enter-from   { opacity: 0; transform: translateY(10px); }
 
 .result-card {
   max-width: 960px; margin: 0 auto;
@@ -790,9 +786,9 @@ onMounted(fetchShows);
   gap: 0; position: relative; z-index: 1;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 7px;
   overflow: hidden;
-  box-shadow: 0 0 80px rgba(255,215,0,0.08);
+  box-shadow: 0 18px 60px rgba(0,0,0,.2);
 }
 
 .result-poster-col { flex-shrink: 0; overflow: hidden; }
@@ -806,7 +802,7 @@ onMounted(fetchShows);
 
 .result-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .result-badge { font-size: 0.65rem; padding: 0.2rem 0.6rem; border-radius: 5px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; background: var(--surface2); color: var(--dim); border: 1px solid var(--border); }
-.result-badge--medium { background: rgba(255,60,95,0.12); color: var(--accent); border-color: rgba(255,60,95,0.3); }
+.result-badge--medium { background: rgba(166,237,198,.08); color: var(--accent); border-color: rgba(166,237,198,.3); }
 .result-badge--rated  { background: rgba(255,215,0,0.1); color: var(--gold); border-color: rgba(255,215,0,0.25); }
 
 .result-title { font-family: var(--display); font-size: 2.6rem; letter-spacing: 0.03em; color: var(--text); line-height: 1.05; }
@@ -836,7 +832,7 @@ onMounted(fetchShows);
   .reel--sm     { flex: 0.6; }
   .reel-value   { font-size: 1.1rem; }
   .reel-value--sm { font-size: 0.9rem; }
-  .reel-value--title { font-size: 1rem; }
+  .reel-value--title { font-size: .95rem; }
   .slot-lights  { display: none; }
   .result-card  { grid-template-columns: 1fr; }
   .result-poster-col { max-height: 260px; }
@@ -851,5 +847,18 @@ onMounted(fetchShows);
   .reel--title { flex: 1 0 100%; }
   .reel        { flex: 1 0 calc(50% - 0.3rem); }
   .reel--sm    { flex: 1 0 calc(50% - 0.3rem); }
+}
+
+@media (max-width: 600px) {
+  .picker-topbar { min-height: 74px; }
+  .picker-header { padding-top: 2.5rem; }
+  .filter-panel { padding: 1.25rem; }
+  .filter-section--row { align-items: flex-start; flex-direction: column; gap: .65rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-value--blur, .reel-value--locking, .reel-value--locked,
+  .spinning-dot, .reel-spinner, .slot-light { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .filter-panel, .pill, .spin-btn, .again-btn, .result-slide-enter-active { transition-duration: .01ms !important; }
 }
 </style>

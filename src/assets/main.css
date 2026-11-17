@@ -1,16 +1,7 @@
 @import "./base.css";
 html, body { overflow-x: hidden; max-width: 100vw; }
 
-#app {
-  margin: 0 auto;
-  padding: 2rem;
-  font-weight: normal;
-  display: flex;
-  justify-content: center;
-  align-items: center; 
-  min-width: 100vw;
-  min-height: 100vh;
-}
+#app { min-height: 100vh; width: 100%; }
 
 a,
 .blue {
@@ -56,18 +47,4 @@ a,
   }
 }
 
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
-
-  #app {
-    padding: 0 2rem;
-  }
-
-  .center_content {
-    width: 80vw;
-    max-width: 1500px
-  }
-}
+@media (min-width: 1024px) { .center_content { width: 80vw; max-width: 1500px; } }

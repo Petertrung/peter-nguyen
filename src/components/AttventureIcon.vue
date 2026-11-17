@@ -1,22 +1,26 @@
 <template>
-    <div class="txt">
-        aTTventure
+    <div class="intro-screen" aria-label="4N Productions intro">
+        <div class="txt">aTTventure</div>
     </div>
 </template>
 
-<style>
-body {
-    background: radial-gradient(#fff, #aaa);
-    background-size: 100vw 100vh;
+<style scoped>
+.intro-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
     overflow: hidden;
-    padding-top: 40vh;
+    background: radial-gradient(ellipse at center, #262d29 0%, #121514 72%);
 }
 
 .txt {
     text-align: center;
-    font-family: "Roboto";
-    font-size: 12vmin;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: clamp(3rem, 12vmin, 8rem);
     font-weight: 700;
+    letter-spacing: -.07em;
     animation: netflix_style 3.5s;
     outline: none;
     white-space: nowrap;

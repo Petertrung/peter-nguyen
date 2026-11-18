@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import PageNavigation from '@/components/PageNavigation.vue'
 
+import fourN from '@/assets/images/companies/4n logo.png'
+
 type BusinessCategory = 'production' | 'technology' | 'ventures'
 
 interface BusinessContact {
@@ -32,7 +34,7 @@ const businesses: Business[] = [{
   name: '4N Productions',
   category: 'production',
   description: 'Creative director, producer, and founder of this portfolio.',
-  logo: '/src/assets/images/companies/4n logo.png',
+  logo: fourN,
   website: 'https://4nproduction.com/',
   contacts: [
     { label: 'Email', href: 'mailto:hello@4nproductions.com', kind: 'email' }
